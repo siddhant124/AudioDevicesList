@@ -1,117 +1,169 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
-import React from 'react';
-import type {PropsWithChildren} from 'react';
+/* eslint-disable react-native/no-inline-styles */
+import React, {useEffect, useState} from 'react';
 import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
   View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  Button,
 } from 'react-native';
+import Sound from 'react-native-sound';
+import AudioDeviceSelector from './src/AudioDeviceSelector';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+const App = () => {
+  const [devices, setDevices] = useState<string[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
+  const [sound, setSound] = useState<Sound | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false); // Track playback state
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
+  useEffect(() => {
+    // Initialize the sound when the component mounts
+    const soundInstance = new Sound('doremon.mp3', Sound.MAIN_BUNDLE, error => {
+      if (error) {
+        console.error('Failed to load the sound', error);
+        return;
+      }
+      console.log('Sound loaded successfully');
+    });
 
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
+    setSound(soundInstance);
 
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+    return () => {
+      // Cleanup the sound instance
+      if (soundInstance) {
+        soundInstance.release();
+      }
+    };
+  }, []);
 
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+  const fetchDevices = async () => {
+    try {
+      const availableDevices = await AudioDeviceSelector.getAudioDevices();
+      setDevices(availableDevices);
+    } catch (error) {
+      console.error('Error fetching devices:', error);
+    }
+  };
+
+  const selectDevice = async (deviceName: string) => {
+    console.log('selected device tsx: ', deviceName);
+    try {
+      // Stop any current playback
+      if (sound && isPlaying) {
+        sound.stop();
+        setIsPlaying(false);
+      }
+
+      // Select the device
+      const result = await AudioDeviceSelector.selectAudioDevice(deviceName);
+      console.log('selected device sound in tsx: ', deviceName);
+      setSelectedDevice(deviceName);
+      console.log(result);
+
+      // If sound exists, reset and reload it
+      if (sound) {
+        sound.release();
+        const newSound = new Sound('doremon.mp3', Sound.MAIN_BUNDLE, error => {
+          if (error) {
+            console.error('Failed to reload the sound', error);
+            return;
+          }
+          console.log('Sound reloaded successfully');
+          setSound(newSound);
+        });
+      }
+    } catch (error) {
+      console.error('Error selecting device:', error);
+    }
+  };
+  const togglePlayback = () => {
+    if (sound) {
+      if (isPlaying) {
+        // Stop the sound
+        sound.stop(() => {
+          console.log('Playback stopped');
+          setIsPlaying(false);
+        });
+      } else {
+        // Play the sound
+        sound.play(success => {
+          if (success) {
+            console.log('Sound played successfully');
+          } else {
+            console.error('Sound playback failed');
+          }
+          setIsPlaying(false); // Reset state when playback stops
+        });
+        setIsPlaying(true); // Update state to reflect playback
+      }
+    }
   };
 
   return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
+    <View style={styles.container}>
+      <Text style={styles.title}>Available Audio Devices:</Text>
+      <FlatList
+        data={devices}
+        keyExtractor={item => item}
+        renderItem={({item}) => (
+          <TouchableOpacity
+            onPress={() => selectDevice(item)}
+            style={[
+              styles.deviceButton,
+              selectedDevice === item && styles.selectedDevice,
+            ]}>
+            <Text style={styles.deviceText}>{item}</Text>
+          </TouchableOpacity>
+        )}
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>No devices found.</Text>
+        }
       />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+      <View
+        style={{
+          gap: 36,
+        }}>
+        <Button title="Refresh Devices" onPress={fetchDevices} />
+        <Button
+          title={isPlaying ? 'Stop Playing' : 'Play Sound'}
+          onPress={togglePlayback}
+        />
+      </View>
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
+  title: {
     fontSize: 18,
-    fontWeight: '400',
+    fontWeight: 'bold',
+    marginBottom: 16,
   },
-  highlight: {
-    fontWeight: '700',
+  deviceButton: {
+    padding: 10,
+    marginVertical: 5,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 5,
+    width: '100%',
+    alignItems: 'center',
+  },
+  selectedDevice: {
+    backgroundColor: '#add8e6',
+  },
+  deviceText: {
+    fontSize: 16,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: 20,
   },
 });
 
