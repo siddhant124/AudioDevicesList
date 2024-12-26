@@ -10,12 +10,14 @@ import {
 } from 'react-native';
 import Sound from 'react-native-sound';
 import AudioDeviceSelector from './src/AudioDeviceSelector';
+import Slider from '@react-native-community/slider';
 
 const App = () => {
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [sound, setSound] = useState<Sound | null>(null);
   const [isPlaying, setIsPlaying] = useState(false); // Track playback state
+  const [volume, setVolume] = useState(0.5); // Default to 50%
 
   useEffect(() => {
     // Initialize the sound when the component mounts
@@ -37,12 +39,38 @@ const App = () => {
     };
   }, []);
 
+  // Fetch available audio devices on mount
   const fetchDevices = async () => {
     try {
       const availableDevices = await AudioDeviceSelector.getAudioDevices();
       setDevices(availableDevices);
     } catch (error) {
       console.error('Error fetching devices:', error);
+    }
+  };
+
+  // Fetch current system volume on mount
+  const fetchVolume = async () => {
+    try {
+      const currentVolume = await AudioDeviceSelector.getSystemVolume();
+      setVolume(currentVolume); // Update state with the current volume
+    } catch (error) {
+      console.error('Error fetching system volume:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchDevices();
+    fetchVolume();
+  }, []);
+
+  const handleVolumeChange = async (value: number) => {
+    setVolume(value); // Update local state
+    try {
+      await AudioDeviceSelector.setSystemVolume(value); // Set system volume
+      console.log(`Volume set to: ${value * 100}%`);
+    } catch (error) {
+      console.error('Error setting system volume:', error);
     }
   };
 
@@ -120,6 +148,27 @@ const App = () => {
           <Text style={styles.emptyText}>No devices found.</Text>
         }
       />
+
+      <Text
+        style={{
+          fontSize: 18,
+          fontWeight: '500',
+          marginTop: 20,
+          marginBottom: 8,
+        }}>
+        Volume:
+      </Text>
+      <Slider
+        style={{width: '100%', height: 40}}
+        minimumValue={0}
+        maximumValue={1}
+        value={volume}
+        onValueChange={handleVolumeChange}
+        minimumTrackTintColor="#1FB28A"
+        maximumTrackTintColor="#d3d3d3"
+        thumbTintColor="#1FB28A"
+      />
+
       <View
         style={{
           gap: 36,

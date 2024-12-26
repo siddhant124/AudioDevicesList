@@ -40,8 +40,11 @@ class AudioDevicesModule(reactContext: ReactApplicationContext) :
       for (device in deviceList) {
         when (device.type) {
           AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> hasSpeaker = true
-          AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_WIRED_HEADSET -> hasWiredHeadset = true
-          AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> hasBluetooth = true
+          AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_WIRED_HEADSET -> hasWiredHeadset =
+            true
+
+          AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> hasBluetooth =
+            true
         }
       }
 
@@ -69,7 +72,8 @@ class AudioDevicesModule(reactContext: ReactApplicationContext) :
             AudioDeviceInfo.TYPE_WIRED_HEADSET,
             AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
             AudioDeviceInfo.TYPE_BLUETOOTH_SCO
-          )) {
+          )
+        ) {
           when {
             hasWiredHeadset -> null
             hasBluetooth -> null
@@ -145,6 +149,34 @@ class AudioDevicesModule(reactContext: ReactApplicationContext) :
       promise.resolve("Audio device set to $deviceName")
     } catch (e: Exception) {
       promise.reject("ERROR", "Failed to select audio device: ${e.message}")
+    }
+  }
+
+  @ReactMethod
+  fun getSystemVolume(promise: Promise) {
+    try {
+      val audioManager =
+        reactApplicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+      val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+      val normalizedVolume = currentVolume.toFloat() / maxVolume.toFloat()
+      promise.resolve(normalizedVolume) // Return normalized volume (0.0 to 1.0)
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to get system volume: ${e.message}")
+    }
+  }
+
+  @ReactMethod
+  fun setSystemVolume(volume: Float, promise: Promise) {
+    try {
+      val audioManager =
+        reactApplicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+      val newVolume = (volume * maxVolume).toInt()
+      audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0)
+      promise.resolve("Volume set to $volume")
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to set system volume: ${e.message}")
     }
   }
 }
