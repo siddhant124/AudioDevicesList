@@ -1,59 +1,87 @@
-/* eslint-disable react-native/no-inline-styles */
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, {useEffect, useState} from 'react';
 import {
   View,
   Text,
-  FlatList,
-  TouchableOpacity,
   StyleSheet,
-  Button,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
+import DropDownPicker from 'react-native-dropdown-picker';
 import Sound from 'react-native-sound';
 import AudioDeviceSelector from './src/AudioDeviceSelector';
-import Slider from '@react-native-community/slider';
 
 const App = () => {
-  const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [sound, setSound] = useState<Sound | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false); // Track playback state
-  const [volume, setVolume] = useState(0.5); // Default to 50%
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(0.5);
+  const [openSpeakerDropdown, setOpenSpeakerDropdown] = useState(false);
+  const [deviceItems, setDeviceItems] = useState<
+    {label: string; value: string}[]
+  >([]);
+  const [lastSelectedDevice, setLastSelectedDevice] = useState<string | null>(
+    null,
+  );
 
-  useEffect(() => {
-    // Initialize the sound when the component mounts
+  // Initialize sound with specific audio routing
+  const initializeSound = (deviceType: string) => {
+    if (sound) {
+      sound.release();
+    }
+
+    // Configure sound based on device type
+    Sound.setCategory('Playback', true); // Enable mixing
     const soundInstance = new Sound('doremon.mp3', Sound.MAIN_BUNDLE, error => {
       if (error) {
         console.error('Failed to load the sound', error);
         return;
       }
-      console.log('Sound loaded successfully');
+      console.log('Sound loaded successfully for device:', deviceType);
     });
 
     setSound(soundInstance);
+  };
 
+  useEffect(() => {
+    initializeSound('Speaker'); // Default initialization
     return () => {
-      // Cleanup the sound instance
-      if (soundInstance) {
-        soundInstance.release();
+      if (sound) {
+        sound.release();
       }
     };
   }, []);
 
-  // Fetch available audio devices on mount
   const fetchDevices = async () => {
     try {
       const availableDevices = await AudioDeviceSelector.getAudioDevices();
-      setDevices(availableDevices);
+      console.log('Available devices:', availableDevices);
+
+      // Map devices and ensure proper labeling
+      const devices = availableDevices.map(device => ({
+        label: device,
+        value: device,
+      }));
+
+      setDeviceItems(devices);
+
+      // Set default device based on priority
+      if (devices.length > 0 && !selectedDevice) {
+        const defaultDevice = devices[0].value;
+        console.log('Setting default device:', defaultDevice);
+        setSelectedDevice(defaultDevice);
+        await selectDevice(defaultDevice);
+      }
     } catch (error) {
       console.error('Error fetching devices:', error);
     }
   };
 
-  // Fetch current system volume on mount
   const fetchVolume = async () => {
     try {
       const currentVolume = await AudioDeviceSelector.getSystemVolume();
-      setVolume(currentVolume); // Update state with the current volume
+      setVolume(currentVolume);
     } catch (error) {
       console.error('Error fetching system volume:', error);
     }
@@ -65,9 +93,9 @@ const App = () => {
   }, []);
 
   const handleVolumeChange = async (value: number) => {
-    setVolume(value); // Update local state
+    setVolume(value);
     try {
-      await AudioDeviceSelector.setSystemVolume(value); // Set system volume
+      await AudioDeviceSelector.setSystemVolume(value);
       console.log(`Volume set to: ${value * 100}%`);
     } catch (error) {
       console.error('Error setting system volume:', error);
@@ -75,144 +103,187 @@ const App = () => {
   };
 
   const selectDevice = async (deviceName: string) => {
-    console.log('selected device tsx: ', deviceName);
     try {
-      // Stop any current playback
+      console.log('Selecting device:', deviceName);
+
+      // Stop current playback if any
       if (sound && isPlaying) {
         sound.stop();
         setIsPlaying(false);
       }
 
-      // Select the device
-      const result = await AudioDeviceSelector.selectAudioDevice(deviceName);
-      console.log('selected device sound in tsx: ', deviceName);
-      setSelectedDevice(deviceName);
-      console.log(result);
-
-      // If sound exists, reset and reload it
-      if (sound) {
-        sound.release();
-        const newSound = new Sound('doremon.mp3', Sound.MAIN_BUNDLE, error => {
-          if (error) {
-            console.error('Failed to reload the sound', error);
-            return;
-          }
-          console.log('Sound reloaded successfully');
-          setSound(newSound);
-        });
+      // Prevent selecting the same device again
+      if (lastSelectedDevice === deviceName) {
+        console.log('Device already selected:', deviceName);
+        return;
       }
+
+      // Select the device through the native module
+      const result = await AudioDeviceSelector.selectAudioDevice(deviceName);
+      console.log('Device selection result:', result);
+
+      // Update state
+      setSelectedDevice(deviceName);
+      setLastSelectedDevice(deviceName);
+
+      // Reinitialize sound for the new device
+      initializeSound(deviceName);
     } catch (error) {
       console.error('Error selecting device:', error);
+      // Revert to previous device if selection fails
+      if (lastSelectedDevice) {
+        setSelectedDevice(lastSelectedDevice);
+      }
     }
   };
+
   const togglePlayback = () => {
     if (sound) {
       if (isPlaying) {
-        // Stop the sound
         sound.stop(() => {
           console.log('Playback stopped');
           setIsPlaying(false);
         });
       } else {
-        // Play the sound
-        sound.play(success => {
-          if (success) {
-            console.log('Sound played successfully');
-          } else {
-            console.error('Sound playback failed');
-          }
-          setIsPlaying(false); // Reset state when playback stops
-        });
-        setIsPlaying(true); // Update state to reflect playback
+        // Ensure device is selected before playing
+        if (selectedDevice) {
+          sound.play(success => {
+            if (success) {
+              console.log(
+                'Sound played successfully on device:',
+                selectedDevice,
+              );
+            } else {
+              console.error('Sound playback failed');
+            }
+            setIsPlaying(false);
+          });
+          setIsPlaying(true);
+        }
       }
     }
   };
 
+  const handleTouchOutside = () => {
+    setOpenSpeakerDropdown(false);
+  };
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Available Audio Devices:</Text>
-      <FlatList
-        data={devices}
-        keyExtractor={item => item}
-        renderItem={({item}) => (
-          <TouchableOpacity
-            onPress={() => selectDevice(item)}
-            style={[
-              styles.deviceButton,
-              selectedDevice === item && styles.selectedDevice,
-            ]}>
-            <Text style={styles.deviceText}>{item}</Text>
+    <TouchableWithoutFeedback onPress={handleTouchOutside}>
+      <View style={styles.container}>
+        <Text style={styles.title}>Speaker</Text>
+
+        <View style={styles.dropdownContainer}>
+          <DropDownPicker
+            open={openSpeakerDropdown}
+            value={selectedDevice}
+            items={deviceItems}
+            closeOnBackPressed={true}
+            setOpen={setOpenSpeakerDropdown}
+            setValue={setSelectedDevice}
+            setItems={setDeviceItems}
+            placeholder="Select Audio Device"
+            onChangeValue={value => value && selectDevice(value)}
+            style={styles.dropdown}
+            dropDownContainerStyle={styles.dropDownStyle}
+            listItemContainerStyle={styles.itemStyle}
+            zIndex={1000}
+          />
+          <TouchableOpacity onPress={fetchDevices} style={styles.refreshButton}>
+            <Text style={styles.refreshText}>Refresh</Text>
           </TouchableOpacity>
-        )}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>No devices found.</Text>
-        }
-      />
+        </View>
 
-      <Text
-        style={{
-          fontSize: 18,
-          fontWeight: '500',
-          marginTop: 20,
-          marginBottom: 8,
-        }}>
-        Volume:
-      </Text>
-      <Slider
-        style={{width: '100%', height: 40}}
-        minimumValue={0}
-        maximumValue={1}
-        value={volume}
-        onValueChange={handleVolumeChange}
-        minimumTrackTintColor="#1FB28A"
-        maximumTrackTintColor="#d3d3d3"
-        thumbTintColor="#1FB28A"
-      />
-
-      <View
-        style={{
-          gap: 36,
-        }}>
-        <Button title="Refresh Devices" onPress={fetchDevices} />
-        <Button
-          title={isPlaying ? 'Stop Playing' : 'Play Sound'}
-          onPress={togglePlayback}
+        <Text style={styles.label}>Volume:</Text>
+        <Slider
+          style={styles.slider}
+          minimumValue={0}
+          maximumValue={1}
+          value={volume}
+          onValueChange={handleVolumeChange}
+          minimumTrackTintColor="#1FB28A"
+          maximumTrackTintColor="#d3d3d3"
+          thumbTintColor="#1FB28A"
         />
+
+        <TouchableOpacity style={styles.button} onPress={togglePlayback}>
+          <Text style={styles.buttonText}>
+            {isPlaying ? 'Stop Speaker' : 'Test Speaker'}
+          </Text>
+        </TouchableOpacity>
       </View>
-    </View>
+    </TouchableWithoutFeedback>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
+    width: '100%',
+    justifyContent: 'flex-start',
     alignItems: 'center',
     padding: 16,
   },
   title: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 16,
   },
-  deviceButton: {
-    padding: 10,
-    marginVertical: 5,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 5,
-    width: '100%',
+  dropdownContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    width: '80%',
+    gap: 8,
+    marginBottom: 20,
+    zIndex: 1000,
   },
-  selectedDevice: {
-    backgroundColor: '#add8e6',
+  dropdown: {
+    flex: 1,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 5,
   },
-  deviceText: {
-    fontSize: 16,
+  dropDownStyle: {
+    borderColor: '#ccc',
+    borderWidth: 1,
+    backgroundColor: '#fff',
+    zIndex: 1000,
   },
-  emptyText: {
+  itemStyle: {
+    borderWidth: 0,
+    backgroundColor: '#fff',
+  },
+  refreshButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#1FB28A',
+    width: 'auto',
+  },
+  refreshText: {
+    color: '#fff',
     fontSize: 14,
-    color: '#888',
-    marginTop: 20,
+  },
+  label: {
+    fontSize: 18,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  slider: {
+    width: '100%',
+    height: 40,
+    marginBottom: 20,
+  },
+  button: {
+    backgroundColor: '#1FB28A',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
