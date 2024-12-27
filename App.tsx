@@ -11,6 +11,7 @@ import Slider from '@react-native-community/slider';
 import DropDownPicker from 'react-native-dropdown-picker';
 import Sound from 'react-native-sound';
 import AudioDeviceSelector from './src/AudioDeviceSelector';
+import MicrophoneComponent from './src/MicrophoneComponent';
 
 const App = () => {
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
@@ -211,6 +212,8 @@ const App = () => {
             {isPlaying ? 'Stop Speaker' : 'Test Speaker'}
           </Text>
         </TouchableOpacity>
+
+        <MicrophoneComponent />
       </View>
     </TouchableWithoutFeedback>
   );
